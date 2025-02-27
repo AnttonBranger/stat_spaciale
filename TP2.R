@@ -42,3 +42,19 @@ communes_Bretagne <- communes_Bretagne %>%
 str(communes_Bretagne$surf2)
 
 # Question 11 
+mean(abs(communes_Bretagne$surf-as.numeric(communes_Bretagne$surf2))^2)
+# Les variables surf et surf2 ne sont pas égales 
+# Cela peut venir du système de projection qui sont différents 
+
+# Question 12
+dept_bretagne <- communes_Bretagne %>% 
+  group_by(dep) %>% 
+  summarise(surf = min(surf)) %>% 
+  select(dep, surf) %>% 
+  ungroup()
+str(dept_bretagne)
+
+plot(st_geometry(dept_bretagne))
+
+# Question 13
+
