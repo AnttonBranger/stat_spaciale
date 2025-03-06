@@ -228,19 +228,88 @@ mf_map(x = dep_fm,
        nbreaks = 4,
        breaks = "quantile")
 ```
+```{r}
+mf_map(x = dep_fm, 
+       var = "Tx_pauvrete", 
+       type = "choro", 
+       nbreaks = 4,
+       breaks = "jenks")
+```
+
 2. Dans un 2e temps, vous ferez un découpages manuel avec les seuils suivants : 0, 13, 17, 25, max(Tx_pauvrete). La carte contiendra également un zoom sur Paris et sa petite couronne (departements 75, 92, 93, 94).
 
+```{r}
+couleur <- rev(mf_get_pal(4, "Mint"))
+
+mf_map(x = dep_fm,
+       var = "Tx_pauvrete",
+       type = "choro",
+       breaks = c(0, 13, 17, 25, max(dep_fm$Tx_pauvrete)),
+       pal = couleur,
+       leg_pos = NA)
+
+# Création d'un encadré pour notre carte
+mf_inset_on(x = dep_fm, 
+            pos = "topright", 
+            cex = .2)
+
+# Pour centrer/ zoomer sur notre encadré sur notre territoire
+mf_init(dep_fm %>% filter(code %in% c("75", "92", "93", "94")))
+
+# On recréé la carte de Paris et sa couronnes
+mf_map(x = dep_fm %>% filter(code %in% c("75", "92", "93", "94")),
+        var = "Tx_pauvrete", 
+        type = "choro",
+        breaks = c(0, 13, 17, 25, max(dep_fm$Tx_pauvrete)),
+        leg_pos = NA,
+        add = T)
+mf_label(dep_fm %>% filter(code %in% c("75", "92", "93", "94")),
+         var = "code",
+         col = "black")
+
+# Fin de l'encadre
+mf_inset_off()
+
+mf_map(mer, add = T)
+# Rajout d'es couleurs'une légende
+mf_legend(type = "choro", 
+          title = "Taux de pauvreté",
+          val = c("", "Moins de 13", "De 13 à moins de 17", "De 17 à moins de 25", "25 ou plus"), 
+          pal = couleur, 
+          pos = "left")
+mf_layout(title = "Taux de pauvreté par département en 2018", 
+          credits = "Source : Insee")
+
+```
+
+
 3. Sauvegarder le jeu de données ayant servi à faire la carte. Pour cela, vous utilisez la fonction `sf::st_write`. Votre sauvegarde se fera sous le format gpkg (geopackage) sous le nom "dept_tx_pauvrete_2018.gpkg". 
+
+```{r}
+sf::st_write(dep_fm, "../fonds/dep_fm.gpkg")
+```
+
 
 ### Exercice 3
 
 Dans la poursuite de la découverte de `mapsf`, réaliser une carte choroplèthe (sur une variable de densite) avec ronds proportionnels (sur une variable de population). Pour cela, vous utiliserez le fond des regions de France metropolitaine sur lequel vous calculerez une variable de densité. Pour la variable de population, vous disposez notamment du fichier "pop_region_2019.xlsx" présent dans le dossier data. La carte se fera avec l'option `type="prop_choro"` de la fonction de mf_map.
 
+```{r}
+
+```
+
+
 ### Exercice 4
 
 1.a. Importer le fond des communes de France métropolitaine `commune_francemetro_2021.gpkg`.
+```{r}
+commune_fm_2021 <- st_read("../fonds/commune_francemetro_2021.gpkg")
+```
 
 b. Importer le fichier `bpe20_sport_loisir_xy.csv` (séparateur de colonnes `;` et séparateur des décimales `.`) et prenez connaissance des données. Il s'agit de la liste géolocalisée des équipements de sports et loisirs en France. Une ligne est donc un équipement. Pour la géolocalisation des équipements, le système de projection utilisé est le Lambert-93 (epsg=2154) pour la Métropole. Le séparateur de colonnes est le `;`. Le fichier est issu du site de l'Insee: [https://www.insee.fr/fr/statistiques/3568638?sommaire=3568656](https://www.insee.fr/fr/statistiques/3568638?sommaire=3568656). Vous y trouverez la documentation nécessaire pour comprendre les données. Repérer notamment les variables renseignant les coordonnées géographiques des équipements, ainsi que la variable indiquant le type d'équipement.
+```{r}
+bpe20 <- read.csv("../data/bpe20_sport_loisir_xy.csv", sep = ";", )
+```
 
 2. Charger un fond OpenStreetMap centré sur la France métropolitaine. Pour cela, repérer les coordonnées (longitude/latitude) d'un point situé approximativement au centre de la France sur [https://www.openstreetmap.org/](https://www.openstreetmap.org/) (un clic-droit + afficher l'adresse). Ensuite utiliser le code suivant où longitude et latitude correspondent aux coordonnées récupérées :
 ```{r}
