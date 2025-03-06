@@ -308,13 +308,13 @@ commune_fm_2021 <- st_read("../fonds/commune_francemetro_2021.gpkg")
 
 b. Importer le fichier `bpe20_sport_loisir_xy.csv` (séparateur de colonnes `;` et séparateur des décimales `.`) et prenez connaissance des données. Il s'agit de la liste géolocalisée des équipements de sports et loisirs en France. Une ligne est donc un équipement. Pour la géolocalisation des équipements, le système de projection utilisé est le Lambert-93 (epsg=2154) pour la Métropole. Le séparateur de colonnes est le `;`. Le fichier est issu du site de l'Insee: [https://www.insee.fr/fr/statistiques/3568638?sommaire=3568656](https://www.insee.fr/fr/statistiques/3568638?sommaire=3568656). Vous y trouverez la documentation nécessaire pour comprendre les données. Repérer notamment les variables renseignant les coordonnées géographiques des équipements, ainsi que la variable indiquant le type d'équipement.
 ```{r}
-bpe20 <- read.csv("../data/bpe20_sport_loisir_xy.csv", sep = ";", )
+bpe20 <- read.csv("../data/bpe20_sport_loisir_xy.csv", sep = ";", dec = ".")
 ```
 
 2. Charger un fond OpenStreetMap centré sur la France métropolitaine. Pour cela, repérer les coordonnées (longitude/latitude) d'un point situé approximativement au centre de la France sur [https://www.openstreetmap.org/](https://www.openstreetmap.org/) (un clic-droit + afficher l'adresse). Ensuite utiliser le code suivant où longitude et latitude correspondent aux coordonnées récupérées :
 ```{r}
 leaflet() %>% 
-  setView(lng = longitude, lat = latitude, zoom = 5)%>%
+  setView(lng = 2.6, lat = 47.2, zoom = 5)%>%
   addTiles()
 ```
 
