@@ -109,24 +109,32 @@ a. Créez une permutation aléatoire des revenus disponibles médians par iris a
 Vous stockerez ce vecteur dans une nouvelle variable du fond des iris nommée `DISP_MED18_ALEA`.
 
 ```{r}
-iris <- iris %>% 
-  
+set.seed(1793)
+marseille <- marseille %>% 
+  mutate(DISP_MED18_ALEA = sample(DISP_MED18))
+
 ```
 
 b. représentez sur une carte la distribution géographique de la variable que vous venez de créer. 
 Comparez le résultat avec la carte réalisée sur la distribution réelle. La distribution spatiale réelle des revenus est-elle proche de la distribution aléatoire ?
 
+```{r}
+
+plot(marseille["DISP_MED18"], breaks = "jenks")
+plot(marseille["DISP_MED18_ALEA"], breaks = "jenks") 
+
+```
 
 
 6. Pour corroborer la conclusion du 5., nous allons mesurer et tester le phénomène d'autocorrélation spatiale.
 
 >Un phénomène est autocorrélé spatialement quand la valeur de la variable étudiée à un 
 endroit donné est plus liée aux valeurs de ses voisins plutôt qu'à celles des autres. 
-On parle d'*autocorrélation positive* si des voisins ont tendance à prendre des valeurs similaires et
-d'*autocorrélation négative* si des voisins ont tendance à prendre des valeurs différentes.
+On parle d'*autocorrélation positive* si des voisins ont tendance à prendre des valeurs similaires et d'*autocorrélation négative* si des voisins ont tendance à prendre des valeurs différentes.
 
 a. Quel type d'autocorrélation spatiale, le phénomène étudié semble-t-il avoir ?
 
+Autocorrélation positive
 
 b. Pour étudier le phénomène, il nous faut construire une matrice de voisinage. 
 Il existe plusieurs façons de définir le voisinage de nos iris. Dans un premier temps,
@@ -140,8 +148,18 @@ Extraire la liste des voisins de chaque Iris. Pour cela, vous utiliserez la fonc
 les mouvements de la Reine aux échecs. Prenez connaissance de l'objet créé et réalisez 
 un résumé de l'objet en sortie avec la fonction `summary()`.
 
+```{r}
+voisin <- poly2nb(marseille)
+str(voisin)
+summary(voisin)
+```
+
 
 c. Combien de voisins a le quatrième élément de la liste ?
+
+```{r}
+voisin[[4]]
+```
 
 
 7. Nous allons transformer la matrice de contiguité en une matrice de pondérations. 
@@ -150,14 +168,24 @@ L'idée est d'affecter un poids identique à chacun des voisins d'un iris.
 a. Créez une liste de poids à partir de la liste de voisins précédemment créée. 
 Pour cela, utilisez la fonction `spdep::nb2listw()`, avec l'argument `zero.policy=TRUE` pour intégrer les Iris n'ayant potentiellement pas de voisins (par défaut, la fonction exclut les observations sans voisin). 
 
+```{r}
+liste_poids <- nb2listw(voisin, zero.policy = T)
+```
 
 
 b. Prenez connaissance de l'objet créé avec la fonction `str()` et l'argument `max.level = 1` et réalisant un résumé de la liste avec la fonction `summary()`.
 
+```{r}
+str(liste_poids, max.level = 1)
+summary(liste_poids)
+```
 
 
 c. Vérifiez que la somme des pondérations associées à chaque pondération est égale à 1.
 
+```{r}
+all(sapply(liste_poids$weights, sum) == 1)
+```
 
 
 8. Une autre façon très visuelle de vérifier la présence d'une autocorrélation est de dresser le diagramme de Moran. La matrice de pondération calculée en 7. va nous permettre de le calculer.
@@ -166,11 +194,21 @@ a. Créer une variable des revenus disponibles centrés réduits avec la fonctio
 Vous la nommerez `DISP_MED18_STD` et l'ajouterez au fond des iris de Marseille.
 Vous vérifierez que la nouvelle variable est bien centrée (moyenne = 0) et réduite (SD = 1).
 
+```{r}
+marseille <- marseille %>% 
+  mutate(DISP_MED18_STD = scale(DISP_MED18))
+
+mean(marseille$DISP_MED18_STD)
+sd(marseille$DISP_MED18_STD)
+```
 
 
 b. Dresser le diagramme de Moran avec la fonction `moran.plot()` à partir de la variable standardisée (utiliser la fonction `as.numeric()` si un problème apparaît).
 Le second argument à préciser (`listw`) correspond à la liste des poids des voisins que vous avez créée précédemment.
 
+```{r}
+moran.plot(as.numeric(marseille$DISP_MED18_STD), listw = liste_poids)
+```
 
 c. Le diagramme de Moran représente, pour chaque observation (ici un Iris), croise deux informations :  
 - en abscisse, est représenté le revenu médian disponible observé au sein de l'iris (variable centrée réduite);
@@ -178,9 +216,14 @@ c. Le diagramme de Moran représente, pour chaque observation (ici un Iris), cro
 
 Interprétez les quatre cadrans du diagramme.
 
+  En haut à droite, ce sont les IRIS avec un revenu médian important entouré d'IRSI ayant un revenu médiant important. 
+  En haut à gauche, ce sont les IRIS avec un faible revenu médian entouré d'IRIS avec un revenu médian élevé. 
+  En bas à droite, on a ce sont les IRIS avec un revenu médian élevé entouré d'IRIS avec un faible revenu médian. 
+  En bas à gauche, ce sont les IRIS avec un faible revenu médian entouré d'IRIS ayant un faible revenu médian.
 
 d. D'après le diagramme de Moran, les revenus médians semblent-ils autocorrélés spatialement ? Si oui, l'autocorrélation vous semble-t-elle positive ou négative ?
 
+Les revenus médiant semblent autocorrélés spatialement positivement. 
 
 9. Il existe une mesure globale de l'autocorrélation spatiale d'un phénomène. Il s'agit du 
 **I de Moran**. 
@@ -190,9 +233,14 @@ utilisée de la façon suivante : `moran.test(marseille$DISP_MED18_STD, ponderat
 Le dernier argument signifie que la distribution observée est comparée à une distribution 
 aléatoire obtenue par permutation des valeurs observées. 
 
+```{r}
+moran.test(marseille$DISP_MED18_STD, liste_poids, randomisation = TRUE)
+```
 
 b. Interpértez le résultat obtenu : confirme-t-il ou non votre hypothèse ?
 
+Le I de Moran vaut 0,70 et la p-value est faible donc on rejette l'hypothèse nulle (I de Moran est nul). 
+Cela valide nos conclusions. 
 
 
 10. BONUS - DECOUVRIR LES INDICATEURS D'AUTOCORRELATION LOCAUX.
@@ -208,14 +256,27 @@ ou ***I de Moran locaux***.
 a. Calculez les Lisa avec la fonction `spdep::localmoran()` et stockez le résultat 
 dans un objet appelé `mars_rev_lisa`.
 
+```{r}
+mars_rev_lisa <- localmoran(as.numeric(marseille$DISP_MED18_STD), listw = liste_poids)
+mars_rev_lisa[1:5,]
+```
 
 b. Etudiez l'objet obtenu, en utilisant notamment les fonctions `class()`, `str(.,max.level=1)` et 
 `summary()`.
 
+```{r}
+class(mars_rev_lisa)
+str(mars_rev_lisa, max.level = 1)
+summary(mars_rev_lisa)
+```
 
 c. Quelle est la moyenne des indicateurs locaux ($I_i$)?
 
-
+```{r}
+mean(mars_rev_lisa[,1])
+mean(mars_rev_lisa[,"Ii"])
+```
+La moyenne des LISA est la I de Moran 
 
 d. L'interprétation d'un Lisa est tout à fait similaire à l'indice global. 
 Si l'indicateur local d'un Iris donné est positif, cela signifie qu'il est entouré d'Iris ayant des niveaux de revenus similaires. 
@@ -223,17 +284,31 @@ S'il est négatif, cela indique qu'il est plutôt entouré d'Iris ayant des nive
 
 Combien d'indicateurs locaux sont-ils négatifs ?
 
+```{r}
+table(mars_rev_lisa[,"Ii"] < 0)
+```
 
 
 e. Nous cherchons à représenter les Lisa sur une carte des Iris marseillais. Pour cela, ajouter les Lisa comme une nouvelle variable du fond des iris, variable que vous nommerez `LISA`.
 
+```{r}
+marseille <- marseille %>% 
+  mutate(LISA = mars_rev_lisa[,"Ii"])
+```
 
 f. Interprétez ce que vous voyez sur la carte.
 
+```{r}
+
+```
 
 
 g. Comme pour le I de Moran, il est nécessaire avant d'aller plus loin dans l'interprétation, de savoir si les Lisa calculés sont significativement différents de zéro. Dans l'objet `mars_rev_lisa`, repérez la colonne correspondant à la pvaleur du test associé à la mesure des Lisa et placez-la dans une nouvelle variable du fond des Iris intitulée `LISA_PVAL`.
 
+```{r}
+marseille <- marseille %>% 
+  mutate(LISA_PVAL = mars_rev_lisa[,5])
+```
 
 
 
