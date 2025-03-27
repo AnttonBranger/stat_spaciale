@@ -77,10 +77,11 @@ dbGetQuery(conn, "SELECT * FROM popnaiss_com WHERE codgeo='35238'")
 6. On souhaite récupérer les informations relatives aux équipements (table bpe_metro) et aux naissances pour la ville de Bruz (table popnaiss_com). Pour cela, faites une jointure (en langage SQL) sur la commune de Bruz (CODGEO = "35047"). Vous utiliserez l'instruction INNER JOIN en terminant avec l'instruction WHERE. [Indication ici](https://www.w3schools.com/sql/sql_join_inner.asp). La clé de jointure est la variable codgeo dans popnaiss_com et depcom dans bpe21_metro. 
 
 ```{r}
-dbGetQuery(conn, "SELECT * FROM bpe_metro INNER JOIN popnaiss_com BY codgeo WHERE codgeo='35047'")
+dbGetQuery(conn, "SELECT * FROM bpe21_metro INNER JOIN popnaiss_com ON bpe21_metro.depcom = popnaiss_com.codgeo WHERE codgeo='35047'")
 ```
 
 7. Le package `dbplyr` permet de travailler sur des BDD de données de type SQL sans avoir à passer par la requête SQL (peut être utile quand on a complètement oublié ses cours). Vous trouverez de la [documentation ici](https://dbplyr.tidyverse.org/).
+
 
 a. Lancez le code suivant. Que fait la fonction `show_query()`? A quoi sert la fonction `collect()` ?
 
@@ -172,7 +173,7 @@ plot(sorbonne_buffer %>% st_geometry()) # qui s'avère être un cercle
 c. A partir de la table cinema_bpe, récupérer l'ensemble des cinémas contenus dans le buffer. Vous pouvez utiliser la fonction `st_within()` de `sf`.
 
 ```{r}
-cinema_1km_sorbonne <- st_within(x = cinema_bpe, y = sorbonne_buffer)
+cinema_1km_sorbonne <- st_join(cinema_bpe, sorbonne_buffer, join = st_within)
 str(cinema_1km_sorbonne)
 ```
 
@@ -212,8 +213,16 @@ Le but de cet exercice est de vous sensibiliser aux problèmes de cohérence pou
 
 1. A partir de la table bpe21_metro, récupérer l'ensemble des boulodromes (TYPEQU="F102") de France. Vous stockerez cela au sein d'une table "boulodrome". A partir de la table regions_metro, créer une table "paca" qui ne contiendra que la région PACA (code='93').
 
+```{r}
+boulodrome <- st_read(conn, query = "SELECT * FROM bpe21_metro WHERE typequ='F102'")
+paca <- st_read(conn, query = "SELECT * FROM regions_metro WHERE code='93'")
+```
 
 2. Créer une table boulodrome_paca en utilisant la geometry des 2 tables. L'idée est de faire une intersection des deux fonds. Vous ferez cette intersection au choix : soit en utilisant sf soit en utilisant PostGIS. Dans les deux cas, la fonction s'appelle `st_contains`.
+
+```{r}
+boulodrome_paca <- st_join(boulodrome, paca, join = st_contains)
+```
 
 3. Le nombre de boulodromes en PACA issu de l'intersection correspond-t-il au nombre de boulodromes en PACA issu de la table bpe21_metro ? Pour faire cela :
 a. Récupérer les boulodromes de PACA en filtrant la bpe21_metro sur les variables `typequ = 'F102'`et `dep in ('04','05','06','13','83','84')`. 
@@ -230,7 +239,7 @@ b. Executer le code suivant. Identifier les éventuels problèmes. Vous pouvez u
 ```{r}
 diff <- boulodromes_paca_bis %>% mutate(version_bis = TRUE) %>% 
   st_join(
-    boulodromes_paca %>% mutate(version_orig = TRUE) %>% select(-typequ), by = "id"
+    boulodrome_paca %>% mutate(version_orig = TRUE) %>% select(-typequ), by = "id"
   ) %>% 
   filter((is.na(version_bis) | (is.na(version_orig))))
 ```
