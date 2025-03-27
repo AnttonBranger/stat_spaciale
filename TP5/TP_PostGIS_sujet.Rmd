@@ -173,7 +173,8 @@ plot(sorbonne_buffer %>% st_geometry()) # qui s'avère être un cercle
 c. A partir de la table cinema_bpe, récupérer l'ensemble des cinémas contenus dans le buffer. Vous pouvez utiliser la fonction `st_within()` de `sf`.
 
 ```{r}
-cinema_1km_sorbonne <- st_join(cinema_bpe, sorbonne_buffer, join = st_within)
+cinema_1km_sorbonne <- st_within(cinema_bpe, sorbonne_buffer)
+cinema_1km_sorbonne <- cinema_bpe %>% filter(lengths(cinema_1km_sorbonne)>0)
 str(cinema_1km_sorbonne)
 ```
 
