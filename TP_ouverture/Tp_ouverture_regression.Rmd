@@ -1,0 +1,179 @@
+---
+title: "Ouverture - regression spatiale"
+output: html_document
+date: "2025-03-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## OUVERTURE
+
+
+
+L'objectif est ici de montrer comment adapter notre analyse en présence d'autocorrélation spatiale. On prend l'exemple des données d'abstentions aux élections présidentielles à l'échelle départementale.
+
+
+
+---
+
+
+
+1. Charger les données en lançant le programme Import_donnees.R puis importer le fichier csv et le fichier gpkg des departements. 
+
+```{r}
+library(dplyr)
+library(sf)
+
+abstentions <- read.csv2("./TP_ouverture/abstentions.csv",fileEncoding = "WINDOWS-1252") %>% 
+  mutate(across(-1,~as.numeric(.)))
+dep<-st_read("./TP_ouverture/dep_francemetro_2021.gpkg")
+
+```
+
+
+2. Faire la jointure entre les 2 fichiers en ne conservant que les départements de France Metropolitaine (fichier dep)  
+
+```{r}
+abstentions_fm<-dep %>% 
+  left_join(abstentions, 
+            by=c("libelle"="DEP")) 
+
+```
+
+5. Représenter la variable de pourcentage d'abstentions aux présidentielles sous forme de carte.
+
+```{r}
+library(mapsf)
+
+mapsf::mf_map(x=abstentions_fm,
+              var = "ABS_PRES_2022",
+              type = "choro",
+              nbreaks = 5, 
+              breaks="fisher")
+
+```
+
+
+
+
+```{r}
+library(spdep)
+
+# Matrice de voisinage
+voisins <- poly2nb(abstentions_fm) #par défaut: queen = TRUE
+# Matrice de poids
+ponderation <- nb2listw(voisins, zero.policy = TRUE)
+# Test de Moran
+moran.test(abstentions_fm$ABS_PRES_2022, ponderation, randomisation = TRUE)
+```
+
+Le I de Moran vaut 0.76. Si on regarde au niveau des LISA
+
+```{r}
+abstentions_lisa <- spdep::localmoran(as.vector(abstentions_fm$ABS_PRES_2022), ponderation, zero.policy = TRUE)
+
+```
+
+9. Faites une carte représentant les circonscriptions pour lesquelles l'autocorrélation est particulièrement significative. Votre carte contiendra 4 couleurs : 
+
+- en rouge les circonscriptions de type High-High significatifs au seuil de 10%, 
+- en bleu celes de type Low-Low significatifs au seuil de 10%, 
+- en jaune les circonscriptions avec autocorrélation négative significative au seuil de 10% 
+- en gris les circonscriptions non significatives au seuil de 10%.
+
+Un bonus sera accordé si vous faites la carte en dynamique (mapview ou leaflet)
+
+```{r}
+abstentions_fm_lisa <- abstentions_fm %>% 
+  mutate(
+    ABST_PRES_STD=scale(ABS_PRES_2022),
+    LISA = abstentions_lisa[,"Ii"],
+    LISA_PVAL = abstentions_lisa[,5],
+    CADRAN = case_when(LISA>0 & LISA_PVAL<0.01 & ABST_PRES_STD>0 ~"High-High",
+                       LISA>0 & LISA_PVAL<0.01 & ABST_PRES_STD<0 ~"Low-Low",
+                       LISA<0 & LISA_PVAL<0.01 ~"High-Low ou Low-High",
+                       TRUE~"Non significatif au seuil 1%")
+  )
+
+#SEUILS DE SIGNIFICATIVITE A BOUGER AVEC BONFERRONI
+
+mapsf::mf_map(x=abstentions_fm_lisa,
+              var = "CADRAN",
+              type="typo",
+              pal = c("red3","dodgerblue4","yellow","grey90"),
+              val_order = c("High-High",
+                            "Low-Low",
+                            "High-Low ou Low-High",
+                            "Non significatif au seuil 1%")
+              )
+
+```
+
+On va maintenant faite la regression de l'abstention en utilisant comme variables explicatives la part des retraites et la part de cadres
+
+```{r}
+model1<-lm(ABS_PRES_2022~PART_RETRAITES + PART_CADRES, data=abstentions_fm)
+summary(model1)
+
+# car::vif(model1)
+lm.morantest(model1,listw = ponderation)
+
+# Les résidus sont-ils autocorrélés ?
+# OUI! les hypothèses du modèle ne sont pas respectées
+```
+
+Une alternative est d'expliquer notre variable d'abstentions en tenant compte également de la valeur des voisins (modèle SAR)
+
+```{r}
+library(spatialreg)
+
+# Exemple de modèle de régression spatiale (modèle SAR, pondération sur la variable d'intérêt des voisins)
+# Y=XB +pWY + epsilon 
+
+
+sar_model <- lagsarlm(ABS_PRES_2022~PART_RETRAITES + PART_CADRES, data=abstentions_fm, listw = ponderation)
+summary(sar_model)
+# L'AIC est plus petit avec ce modèle
+
+# Les résidus sont-ils autocorrélés ?
+sar_residuals <- residuals(sar_model)
+moran.test(sar_residuals, listw = ponderation)
+# Non
+
+
+```
+
+
+```{r}
+# Autre exemple : le modèle SLX (tient comptes des X des voisins)
+# Ajustement d'un modèle SLX (Spatial Lag of X) : Y= XB + pWX + epsilon
+slx_model <- lmSLX(ABS_PRES_2022~PART_RETRAITES + PART_CADRES, data=abstentions_fm, listw = ponderation)
+summary(slx_model)
+# Le modèle SLX permet de capturer l'effet spatial des variables explicatives mais sans autocorrélation dans la variable dépendante.
+
+AIC(slx_model)
+# Moins bon que le modèle SAR (à peine mieux que le lm classique)
+# et toujours de l'autocorrélation!
+lm.morantest(slx_model,listw = ponderation)
+```
+
+```{r}
+# Autre type de modèle : le modèle SEM (tient compte des erreurs des voisins : modélise l'autocorrélation dans les erreurs)
+# Y=XB+u
+# u = lambda * Wu + epsilon
+sem_model <- errorsarlm(ABS_PRES_2022~PART_RETRAITES + PART_CADRES, data=abstentions_fm, listw = ponderation)
+summary(sem_model)
+
+# Semble être le meilleur du point de vue de l'AIC
+
+# Plus d'autocorrélation non plus
+moran.test(sem_model$residuals,listw = ponderation)
+
+```
+
+
+
+
+

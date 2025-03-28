@@ -1,0 +1,224 @@
+---
+title: "TP noté - Introduction à la statistique spatiale"
+authors : BRANGER Antton
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## **Consignes:**
+
+**LE TP DURE 2H**
+
+- Le TP se fait seul(e). Le smartphone est interdit. Seuls les programmes et corrigés des TP sont autorisés. Toute communication, toute aide de type IA  (Chatgpt ou Gemini en particulier) ou toute recherche google est interdite.
+
+- Vous travaillerez directement dans le sujet. Vous nommerez le programme de la manière suivante: Nom.Rmd. Pour rajouter des chuncks de code sous chaque question, vous pouvez utiliser le raccourci clavier CTRL+ALT+I
+
+
+---
+
+
+0. Commencer par renseigner votre nom et prénom en face de "authors:" en haut du programme.
+
+```{r}
+library(dplyr)
+library(sf)
+library(spdep)
+library(leaflet)
+library(RColorBrewer)
+library(readxl)
+```
+
+### Exercice 1
+
+Vous allez travailler sur les résultats du vote Le Pen au 1er tour des élections présidentielles 2022 à l'échelle des circonscriptions. Dans un premier temps, deux fichiers seront utilisés : un fichier excel donnant les résultats du vote Le Pen par circonscription et un fichier geopackage "circonscriptions_2022.gpkg". 
+
+
+1. Charger les données en lançant le programme Import_donnees.R puis importer le fichier excel et le fichier gpkg des circonscriptions. 
+
+```{r}
+circonscription <- st_read("./TP_note/circonscriptions_2022.gpkg")
+resultat <- read_excel("./TP_note/resultats-par-circonscriptions-france-entiere.xlsx")
+```
+
+2. Quel est le systeme de projection du fond des circonscriptions ? Transformer le système de projection pour le faire passer en Lambert-93 (code 2154).
+
+```{r}
+st_crs(circonscription)
+```
+Le système de projection est ESPG 4326
+
+```{r}
+circonscription <- circonscription %>% 
+  st_transform(2154)
+st_crs(circonscription)
+```
+
+3. Représenter le fond des circonscriptions (géométrie uniquement). Quel est le périmètre géographique/champ du fichier de données ? 
+
+```{r}
+plot(st_geometry(circonscription))
+```
+Le champs est la France entière (métropole et les doms)
+
+4. Créer un fichier circo_francemetro restreint uniquement à la france metropolitaine, en sélectionnant tous les départements dont le code est plus petit strictement que 97. Représenter la géométrie de ce nouveau fond pour vous assurer que votre sélection a fonctionné.
+
+```{r}
+circo_francemetro <- circonscription %>% 
+  filter(dep != "971") %>% 
+  filter(dep != "972") %>% 
+  filter(dep != "973") %>% 
+  filter(dep != "974") %>% 
+  filter(dep != "976") 
+plot(st_geometry(circo_francemetro))
+```
+
+5. Faites la jointure entre le fichier circo_francemetro et le fichier sur le vote Le Pen (clé de jointure id_circo). On ne souhaite garder que les résultats de France métropolitaine. Assurez-vous qu'il n'y a pas de valeurs manquantes après la jointure.
+
+```{r}
+circo_francemetro <- circo_francemetro %>% 
+  left_join(resultat, join_by(id_circo))
+any(is.na(circo_francemetro))
+```
+
+6. Représenter la variable de pourcentage de vote Le Pen sous forme de carte. Pour cela, vous discrétiserez votre variable (utilisez une méthode de discrétisation qui vous semble pertinente).
+
+```{r}
+plot(circo_francemetro["LEPEN"], breaks="jenks", main="jenks", border = FALSE)
+
+```
+
+7. Créer une carte de distribution aléatoire. Commenter. 
+
+```{r}
+circo_francemetro <- circo_francemetro %>% 
+  mutate(LEPEN_ALEA = sample(LEPEN))
+plot(circo_francemetro["LEPEN_ALEA"], breaks="jenks", main="jenks", border = FALSE)
+
+```
+
+8. La carte semble-t-elle suggérer un phénomène d'autocorrélation spatiale ? A vous de le vérifier avec les outils vus en cours. Vous expliquerez chaque étape de votre démarche et commenterez de manière détaillée chacun de vos résultats.
+
+La comparaison des deux cartes semble suggérer que la carte représentant la distribution réelle des votes Le Pen est très différente de la carte d'une distribution aléatoire. Le phénomène semble spatialement corrélé.
+
+Construction d'un matrice de voisinage
+
+```{r}
+voisin <- poly2nb(circo_francemetro)
+str(voisin)
+```
+
+Matrice de pondération
+
+```{r}
+ponderation <- nb2listw(voisin, zero.policy = TRUE)
+summary(ponderation)
+all(sapply(ponderation$weights, sum) == 1)
+```
+Création d'une variable centrée réduite de la variable 'LEPEN'
+
+```{r}
+circo_francemetro <- circo_francemetro %>%
+  mutate(LEPEN_STD = scale(LEPEN))
+
+mean(circo_francemetro$LEPEN_STD)
+sd(circo_francemetro$LEPEN_STD)
+```
+
+Diangramme de Moran
+
+```{r}
+moran.plot(
+  as.numeric(circo_francemetro$LEPEN_STD),
+  listw = ponderation,
+  xlab = "Poucentage médians des votes Le Pen par circonscriptions",
+  ylab = "Moyenne des votes Le Pen des voisins",
+  main = "Diagramme de Moran"
+)
+```
+Le diagramme de Moran montre une autocorrélation positive. 
+
+Regardons la valeur du I de Moran
+
+```{r}
+moran.test(circo_francemetro$LEPEN_STD, ponderation, randomisation = TRUE)
+
+```
+
+La p-value est faible donc on rejette l'hypothèse nulle (le I de Moran est nulle). 
+I de Moran = 0,77 ce qui confirme la forte autocorrélation spatiale positive. 
+
+9. Commentez le LISA associé à la 2e circonscription
+
+```{r}
+lisa <- localmoran(circo_francemetro$LEPEN, ponderation, zero.policy = T)
+lisa[2]
+```
+
+Le LISA associé à la 2e circonscription est de 0.86 donc cette circonscription est fortement corrélée spatialement. 
+
+10. Faites une carte représentant les circonscriptions pour lesquelles l'autocorrélation est particulièrement significative. Votre carte contiendra 4 couleurs : 
+
+- en rouge les circonscriptions de type High-High significatives au seuil de 0.01%, 
+- en bleu celles de type Low-Low significatives au seuil de 0.01%, 
+- en jaune les circonscriptions avec autocorrélation négative significative au seuil de 0.01% 
+- en gris les circonscriptions non significatives au seuil de 0.01%.
+
+PS : Le seuil de significativité est volontairement bas en raison de la multiplicité des tests (cela correspond à peu près à ce qu'on aurait avec une correction de type Bonferroni)
+
+On rajoute les LISA associé à chaque circoscription dans notre dataframe
+```{r}
+circo_francemetro <- circo_francemetro %>% 
+  mutate(LISA = lisa[,"Ii"],
+         LISA_PVAL = lisa[,5])
+
+
+circo_francemetro <- circo_francemetro %>% 
+  mutate(COULEUR = case_when(
+    circo_francemetro > mean(circo_francemetro$LEPEN) & circo_francemetro$LISA_PVAL < 0.0001 & circo_francemetro$LISA > 0 ~ "bleu",
+    circo_francemetro < mean(circo_francemetro$LEPEN) & circo_francemetro$LISA_PVAL < 0.0001 & circo_francemetro$LISA > 0 ~ "rouge",
+    circo_francemetro$LISA_PVAL < 0.0001 & circo_francemetro$LISA < 0 ~ "jaune",
+    .default = "gris"
+  ))
+```
+
+
+## Exercice 2 
+
+1. Calculer la surface (superficie) des circonscriptions. Ces superficies sont-elles homogènes ? Quelles difficultés y aurait-il à conduire une analyse où la contiguité est définie selon un seuil de distance ?
+
+```{r}
+circo_francemetro <- circo_francemetro %>% 
+  group_by(CODE_CIRCO) %>% 
+  mutate(surf = st_area(geom))
+circo_francemetro$surf = units::set_units(circo_francemetro$surf, km^2)
+summary(circo_francemetro$surf)
+sd(circo_francemetro$surf)
+```
+
+Les superficies des circonscriptions sont très hétérogènes. Si la contiguité était définie par un seuil de distance, certaines circonscriptions seraient contigu avec plus circonscriptions que d'autres. 
+
+2. Identifier les communes pour lesquelles l'autocorrelation positive est significative au seuil de 0.01% et de type Low-Low. Dit autrement, créer une table contenant les communes concernées par les zones bleues du graphique précédent (question 10 exercice 1). Vous aurez besoin du fond des communes de France metropolitaine.
+
+```{r}
+
+```
+
+3. Quel pourcentage des inscrits sur les listes électorales représente ces communes bleues ? Même questions avec les communes rouges
+
+```{r}
+
+```
+
+4. Y a t'il des circonscriptions à cheval sur plusieurs départements ? Dit autrement, existe-t-il des circonscriptions composées de communes n'appartenant pas au même département.
+
+```{r}
+
+```
+
+5. Sans avoir à faire de code (réponse littéraire attendue) : Que peut-on attendre du I de Moran si on faisait le même travail à l'échelle du département ?
+
+
+
